@@ -1,0 +1,96 @@
+---
+title: "test api qmd"
+format:
+  html: default
+editor_options: 
+  chunk_output_type: console
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(rvest)
+library(httr)
+```
+
+
+```{r}
+myapikey <- "puoZGN0hN5cI5lJ2UycRaFLtVbth5gwpF9Zgd74N"  # enter your API key for omdbapi.com 
+                            # (must obtain personal key)
+
+# default is JSON = JavaScript Object Notation, 
+#  which is standard data format for APIs
+# - URL obtained by searching for Coco in 2017 at omdbapi.com
+# - this part is optional: plot=short&r=json&
+url <- str_c("https://developer.nps.gov/api/v1/parks?parkCode=acad&api_key=", myapikey)
+
+national_park <- GET(url)   # coco holds response from server
+#coco               # Status of 200 is good!
+
+details <- content(national_park, "parse")   
+#details                             # get a list of 25 pieces of information
+
+details[[1]]    #Acadia National Park
+
+details[[4]] 
+```
+
+You can add options to executable code like this 
+
+```{r}
+parks <- c("Acadia National Park", "Igloo Creek Campground")
+
+parks_data <- tibble(Park = character(), Address = character(), contact_number = character(), Activities = character(), topics = character(),
+       entrance_fees = double())
+
+#curl -X GET "https://developer.nps.gov/api/v1/activities?q=hiking" -H "accept: application/json" ?? 
+```
+
+```{r}
+#grabbing the necessary information ... 
+
+(address_details <- str_c(details$data[[1]]$address[[1]]$line1, " ", details$data[[1]]$address[[1]]$line3, " ", details$data[[1]]$address[[1]]$line2, " ", details$data[[1]]$address[[1]]$city, " ",  details$data[[1]]$address[[1]]$stateCode, ", " , details$data[[1]]$address[[1]]$postalCode)) 
+
+
+activity <- details$data[[1]]$activities[[i]]$name
+
+for(i in 2:46) {
+  activity <- str_c(activity, ", ", details$data[[1]]$activities[[i]]$name)
+  
+}
+
+park_activities <- length(details$data[[1]]$activities)
+```
+
+
+
+```{r}
+for(i in 1:2) {
+  url <- str_c("https://developer.nps.gov/api/v1", parks[i],
+               "&apikey=", myapikey)
+  
+  onemovie <- GET(url)
+  details <- content(onemovie, "parse")
+  parks_data[i,1] <- details$data[[1]]$park
+  parks_data[i,2] <- details$data[[1]]$address
+  parks_data[i,3] <- details$data[[1]]$contacts$phoneNumbers[[1]]$phoneNumber
+  parks_data[i,4] <- details$data[[1]]$activities
+  parks_data[i,5] <- details$data[[1]]$topics   # no $ and ,'s
+  parks_data[i,6] <- parse_number(details$data[[1]]$entranceFees[[1]]$cost)
+}
+```
+
+```{r}
+(address_details <- str_c(details$data[[1]]$address[[1]]$line1, " ", details$data[[1]]$address[[1]]$line3, " ", details$data[[1]]$address[[1]]$line2, " ", details$data[[1]]$address[[1]]$city, " ",  details$data[[1]]$address[[1]]$stateCode, ", " , details$data[[1]]$address[[1]]$postalCode))
+```
+
+
+$data[[1]]$entranceFees[[1]]$description ; entrance fees descriptions 
