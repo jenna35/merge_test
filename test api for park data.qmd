@@ -1,96 +1,110 @@
 ---
-title: "test api qmd"
+title: "National Parks Flexdashboard"
 format:
   html: default
 editor_options: 
   chunk_output_type: console
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
 ---
 
-## Quarto
+```{r global, include=FALSE, message=FALSE}
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+#LIBRARIES
 
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
 library(tidyverse)
+library(knitr)
+library(httr)
 library(stringr)
 library(rvest)
-library(httr)
-```
+library(ggplot2)
+library(readr)
+library(dplyr)
 
+#OUTSIDE DATA
 
-```{r}
-myapikey <- "puoZGN0hN5cI5lJ2UycRaFLtVbth5gwpF9Zgd74N"  # enter your API key for omdbapi.com 
-                            # (must obtain personal key)
+np_data_from_kaggle_species <- read_csv("~/Mscs 264 S24/Submit/project_files/species.csv")
 
-# default is JSON = JavaScript Object Notation, 
-#  which is standard data format for APIs
-# - URL obtained by searching for Coco in 2017 at omdbapi.com
-# - this part is optional: plot=short&r=json&
-url <- str_c("https://developer.nps.gov/api/v1/parks?parkCode=acad&api_key=", myapikey)
+np_data_from_kaggle_parks <- read_csv("~/Mscs 264 S24/Submit/project_files/parks.csv")
 
-national_park <- GET(url)   # coco holds response from server
-#coco               # Status of 200 is good!
+#DATA FROM NPS API
 
-details <- content(national_park, "parse")   
-#details                             # get a list of 25 pieces of information
+myapikey_jenna <- "yjMejbwg0Rxa4MOVeXwUQiVgnzbcf8fhsgETGU3O"
+myapikey_jenna2 <- "Un1bXr7W308zFgKPch0tT5p0nLlMRNgOuFNTzHln"
+#myapikey_mary
+#myapikey_mary2
 
-details[[1]]    #Acadia National Park
+park_code <- np_data_from_kaggle_parks |>
+  select(`Park Code`) |>
+  rename(park_code = `Park Code`)
 
-details[[5]] 
-```
+urls <- {}
 
-You can add options to executable code like this 
-
-```{r}
-parks <- c("Acadia National Park", "Igloo Creek Campground")
-
-parks_data <- tibble(Park = character(), Address = character(), contact_number = character(), Activities = character(), topics = character(),
-       entrance_fees = double())
-
-#curl -X GET "https://developer.nps.gov/api/v1/activities?q=hiking" -H "accept: application/json" ?? 
-```
-
-```{r}
-#grabbing the necessary information ... 
-
-(address_details <- str_c(details$data[[1]]$address[[1]]$line1, " ", details$data[[1]]$address[[1]]$line3, " ", details$data[[1]]$address[[1]]$line2, " ", details$data[[1]]$address[[1]]$city, " ",  details$data[[1]]$address[[1]]$stateCode, ", " , details$data[[1]]$address[[1]]$postalCode)) 
-
-
-activity <- details$data[[1]]$activities[[i]]$name
-
-for(i in 2:46) {
-  activity <- str_c(activity, ", ", details$data[[1]]$activities[[i]]$name)
-  
+parks_address <- tibble(address = character())
+for(i in 1:56) {
+  urls <- str_c("https://developer.nps.gov/api/v1/parks?parkCode="
+                , park_code[[1]][[i]], "&api_key=", myapikey)
+  one_park <- GET(urls)
+  details <- content(one_park, "parse")
+  parks_address[i,1] <- str_c(details$data[[1]]$addresses[[1]]$line1, " ",
+                              details$data[[1]]$addresses[[1]]$line3, " ",
+                              details$data[[1]]$addresses[[1]]$line2, " ",
+                              details$data[[1]]$addresses[[1]]$city, " ",
+                              details$data[[1]]$addresses[[1]]$stateCode, ", " ,
+                              details$data[[1]]$addresses[[1]]$postalCode)
 }
 
-park_activities <- length(details$data[[1]]$activities)
+activity_list <- vector()
+for(i in 1:56) { 
+  urls <- str_c("https://developer.nps.gov/api/v1/parks?parkCode=",
+                park_code[[1]][[i]], "&api_key=", myapikey)
+  one_park <- GET(urls)
+  details <- content(one_park, "parsed")
+  activity_list[i] <- details$data[[1]]$activities[[1]]$name
+  for (j in 2:length(details$data[[1]]$activities)) {
+    activity_list[i] <- str_c(activity_list[i], ", ",
+                              details$data[[1]]$activities[[j]]$name)
+}}
+activity_list <- as_tibble(activity_list) |>
+rename(activities = value)
+
+park_data_bind <- as_tibble(cbind(park_code, parks_address, activity_list))
+
+park_data <- np_data_from_kaggle_parks |>
+  full_join(park_data_bind, join_by(`Park Code` == park_code))
 ```
 
 
+About
+==========================
 
-```{r}
-for(i in 1:2) {
-  url <- str_c("https://developer.nps.gov/api/v1", parks[i],
-               "&apikey=", myapikey)
-  
-  onemovie <- GET(url)
-  details <- content(onemovie, "parse")
-  parks_data[i,1] <- details$data[[1]]$park
-  parks_data[i,2] <- details$data[[1]]$address
-  parks_data[i,3] <- details$data[[1]]$contacts$phoneNumbers[[1]]$phoneNumber
-  parks_data[i,4] <- details$data[[1]]$activities
-  parks_data[i,5] <- details$data[[1]]$topics   # no $ and ,'s
-  parks_data[i,6] <- parse_number(details$data[[1]]$entranceFees[[1]]$cost)
-}
-```
+Column {data-width = 400}
+-------------------------
 
-```{r}
-(address_details <- str_c(details$data[[1]]$address[[1]]$line1, " ", details$data[[1]]$address[[1]]$line3, " ", details$data[[1]]$address[[1]]$line2, " ", details$data[[1]]$address[[1]]$city, " ",  details$data[[1]]$address[[1]]$stateCode, ", " , details$data[[1]]$address[[1]]$postalCode))
-```
+#### Authors
+
+Jenna Graff and Mary Wu
+
+#### Background Information
+
+Final Project for Data Science 2 - Shiny Flexdahboard
+
+#### Data Sources
 
 
-$data[[1]]$entranceFees[[1]]$description ; entrance fees descriptions 
+
+Column {data-width = 200}
+-------------------------
+
+
+Activities
+=========================
+
+
+Maps
+=========================
+
+
+Animal Sightings
+=========================
