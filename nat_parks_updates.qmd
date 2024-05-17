@@ -1,0 +1,343 @@
+---
+title: "National Parks"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+    theme: flatly
+runtime: shiny
+---
+
+```{r global, include=FALSE, message=FALSE}
+
+#LIBRARIES
+
+library(tidyverse)
+library(knitr)
+library(httr)
+library(stringr)
+library(rvest)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(maps)
+library(sf)
+library(tidyr)
+library(readr)
+library(shiny)
+library(plotly)
+library(ggridges)
+library(wordcloud)
+library(RColorBrewer)
+library(tidytext)
+library(forcats)
+library(kableExtra)
+
+#OUTSIDE DATA
+
+np_data_from_kaggle_species <- read_csv("species.csv")
+
+np_data_from_kaggle_parks <- read_csv("parks.csv")
+
+#full_states_data <- read_csv("US_GeoCode.csv")
+
+visitation <- read_csv("visitation.csv")
+
+#DATA FROM OUR CREATED CSV
+park_data <- read_csv("park_data.csv")
+
+
+```
+
+
+About
+==========================
+
+Column
+-------------------------
+
+#### Authors
+
+Jenna Graff and Mary Wu
+
+#### Background Information
+
+For our final project in Data Science II, we are analyzing data found on the National Parks website, and joining it with other publicly available National Park data. Information we grabbed with the National Parks Service (NPS) API includes activities to do at each park, the address, and location, including coordinates and state. We joined this data set we created with data sets of visitors to each park and species that have been found in each of the parks. 
+
+With this project, our goal is to help plan future trips to recreational areas by showing when parks are busy, what there is to do there, their location and size, and fun wildlife that can be seen. 
+
+
+#### Data Sources
+
+
+#### GitHub
+
+
+
+Column
+---------------
+
+```{r  fig.width = 4, fig.height = 6}
+include_graphics("nps_logo.png")
+```
+
+
+
+
+
+Column {data-width = 200}
+-------------------------
+
+
+Activities
+=========================
+
+```{r, include=FALSE}
+number_of_activities <- park_data |>
+  select(`Park Code`, `Park Name`, activities, State, Acres) |>
+  mutate(n_activities = str_count(activities, ", "), 
+         `number of activities` = n_activities + 1) 
+
+list_of_all_activities <- park_data |> # long list of activities per park
+  mutate(activities =  str_replace_all(activities, " ", "")) |> 
+  select(`Park Code`, activities, State, `Park Name`) |>
+  unnest_tokens(words, activities)
+```
+
+
+Column {data-height=950}
+-------------------------
+
+### Here are the number of activities available at every national park - ordered from most to least. Hovering on each bar will show more information
+
+```{r}
+activities_by_park_graph <- list_of_all_activities |> 
+  group_by(`Park Name`, State) |>
+  count() |>
+  ggplot(aes(x = fct_reorder(`Park Name`, n), y = n)) +
+  geom_col(fill = "black") + 
+  coord_flip() +
+  labs(title = "Number of Activities by Park", 
+       y = "Number of Actvities",
+       x = "Park Name")
+
+ggplotly(activities_by_park_graph)
+```
+
+
+Column {data-height=650} 
+-------------------------
+
+### Number of Activities in National Parks
+
+```{r echo = FALSE}
+histogram <- ggplot(number_of_activities, aes(x = `number of activities`)) +
+    geom_histogram(bins = 15,
+                   fill = "white", colour = "black") +
+    labs(title = "Distribution of activity options",
+         y = "Number of parks")
+
+ggplotly(histogram)
+```
+
+
+### Wordcloud
+
+```{r}
+list_of_all_activities |>
+  count(words) |>
+  with(wordcloud(words, n, max.words = 120, 
+                 colors = brewer.pal(8, "Dark2")))
+```
+
+
+
+Maps
+=========================
+
+
+Column {data-width = 600}
+--------------------
+### Here is an interactive map that will show park name, address, and acerage when you click on each green dot
+
+```{r}
+library(leaflet)
+
+leaflet() |>
+    addTiles() |>
+    setView(lng = mean(park_data$Longitude), lat = mean(park_data$Latitude), 
+           zoom = 3) |> 
+    addCircleMarkers(data = park_data,
+        lat = ~ Latitude, 
+        lng = ~ Longitude, 
+        popup = ~ paste0("<b>Park: </b>", `Park Name`, "    ", 
+                         "<b>Address: </b>", address, "    ",
+                         "<b>Acres: </b>", Acres),
+        radius = ~ log(Acres / 90),  
+        weight = 1,
+        color = "green")
+```
+
+
+Species
+=========================
+
+Column
+-------------------------
+```{r}
+np_data_from_kaggle_species |>
+  filter(`Common Names` != "None") |>
+  group_by(`Common Names`) |>
+  summarize(common_sightings = n()) |>
+  slice_max(common_sightings, n = 10) |>
+  kable() |>
+  kable_styling()
+```
+
+Column
+-------------------------
+```{r, include=FALSE}
+np_data_from_kaggle_species |>
+  mutate(Category = fct_lump_n(Category, 7),
+         n_species = n()) |>
+  ggplot() +
+  geom_bar(aes(x = Category))
+```
+
+
+```{r}
+park_names_for_species <- np_data_from_kaggle_parks |> 
+  select(`Park Name`) |>
+  rename(national_park = `Park Name`)|>
+  rename(ParkName = national_park)
+
+species <- np_data_from_kaggle_species |>
+  group_by(Category, `Park Name`) |>
+  rename(ParkName = `Park Name`) |> 
+  summarize(n_species = n()) 
+
+inputPanel(
+  selectInput("ParkName", label = "National Park:",
+              choices = c(park_names_for_species), selected = "Acadia National Park")
+  )
+```
+
+```{r}
+renderPlot({
+    species |>
+    filter(ParkName == input$ParkName) |>
+    ggplot() +
+    geom_col(aes(x = Category, y = n_species )) +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+    labs(x = "", y = "", 
+         title = input$ParkName)
+  })
+```
+
+
+
+
+Visitation
+=========================
+Source: [National Parks Service](https://irma.nps.gov/Stats/SSRSReports/National%20Reports/Query%20Builder%20for%20Public%20Use%20Statistics%20(1979%20-%20Last%20Calendar%20Year))
+
+
+Column {data-width = 200}
+-------------------------
+
+
+### This density plot shows how parks in different regions see different quantities of visitors
+```{r}
+visitation |>
+  group_by(Region, Month) |>
+  summarize(total_visitors = sum(RecreationVisits),
+            mean_visitors = mean(RecreationVisits),
+            .groups = "drop") |>
+  ggplot(aes(x = total_visitors, 
+             y = fct_reorder(Region, total_visitors), 
+             fill = fct_reorder(Region, total_visitors))) +
+  geom_density_ridges(alpha = .5, show.legend = FALSE) +
+  labs(title = "Number of visitors to National Parks by region (2023)",
+       x = "Visitors",
+       y = "Region")
+```
+
+
+
+```{r}
+park_names <- np_data_from_kaggle_parks |> 
+  select(`Park Name`) |>
+  rename(national_park = `Park Name`)|>
+  mutate(national_park = str_replace_all(national_park, " National Park", " NP")) |>
+  rename(ParkName = national_park)
+
+visitation_by_park <- visitation |>
+  group_by(Month, ParkName) |>
+  summarize(total_visitors = sum(RecreationVisits)) 
+```
+
+### Here is an interactive plot where we can see the number of visitations for any National Parks 
+
+```{r}
+inputPanel(
+  selectInput("ParkName1", label = "National Park:",
+              choices = c(park_names), selected = "Acadia National Park")
+  )
+```
+
+
+```{r}
+renderPlot({
+    visitation_by_park |>
+    filter(ParkName == input$ParkName1) |>
+    ggplot() +
+    geom_line(aes(x = Month, y = total_visitors)) +
+    labs(x = "Month", y = "Number of Visitors", 
+         title = input$ParkName1)
+  })
+```
+
+
+
+Column {data-width = 200}
+-------------------------
+
+### This plot shows the number of visitors among all National Parks in the year  2023
+
+```{r}
+visitation |>
+  group_by(Month) |>
+  summarize(total_visitors = sum(RecreationVisits))  |>
+  ggplot() +
+  geom_line(aes(x = Month, y = total_visitors)) +
+  labs(title = "Total visits over the year (2023)",
+       y = "Number of visitors")
+```
+
+### Here is an interactive plot where we can compare the number of visitations between two National Parks 
+
+```{r}
+inputPanel(
+  selectInput("ParkName2", label = "National Park:",
+              choices = c(park_names), selected = "Acadia National Park"),
+  selectInput("ParkName3", label = "National Park:",
+              choices = c(park_names), selected = "Acadia National Park")
+  )
+```
+
+
+```{r}
+renderPlot({
+    visitation_by_park |>
+    filter(ParkName == input$ParkName2 | ParkName == input$ParkName3) |>
+    ggplot() +
+    geom_line(aes(x = Month, y = total_visitors, color = ParkName)) +
+    labs(x = "Month", y = "Number of Visitors")
+  })
+```
+
+
+Conclusions
+==========================
+
+
+
